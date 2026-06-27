@@ -1,0 +1,440 @@
+---
+title: "Praktikum 6 Anreg"
+author: "Atikah Maulina"
+date: "`r Sys.Date()`"
+output: 
+  rmdformats::readthedown
+---
+
+# Library
+
+```{r, warning = FALSE, message = FALSE}
+library(readxl) # untuk membaca data
+library(GGally) # untuk menghasilkan matriks hubungan antarpeubah
+library(corrplot) # untuk menghasilkan matriks korelasi
+library(dplyr) # untuk manipulasi data
+library(car) # untuk memeriksa multikolinearitas
+library(stargazer) # untuk menampilkan hasil perbandingan regresi
+library(lmtest) # untuk uji kehomogenan ragam sisaan dan saling bebas
+library(olsrr) # untuk pemeriksaan amatan tidak biasa
+```
+
+Data
+
+```{r}
+data <- read_excel("C:/Users/ATIKAH MAULINA/OneDrive/Documents/STK 4/ANREG/Anreg_UAS/ANREG DATA CO2.xlsx")
+
+data # menampilkan data
+```
+
+```{r}
+str(data) # menampilkan tipe data setiap peubah
+```
+
+```{r}
+summary(data) # menampilkan ringkasan data
+```
+
+Data yang digunakan adalah data dari 30 Negara di dunia pada Tahun 2020 dengan 1 peubah respon yaitu CO2 per Kapita dan 4 peubah penjelas. Peubah tersebut adalah Emisi $CO₂$ per kapita ($Y$), GDP per Kapita ($X1$), Rata-Rata Konsumsi Jumlah Energi per Kapita ($X2$),	Jumlah Penduduk Daerah Perkotaan dalam persen ($X3$),	Kepadatan Penduduk ($X4$), dan Penggunaan Energi Alternatif dalam persen ($X5$).
+
+Untuk mempermudah dalam komputasi, karena peubah wilayah tidak digunakan, maka dapat dihapus. Pada praktikum kali ini akan dilakukan dua pemodelan, yakni model dengan seluruh peubah kuantitatif dan model dengan adanya peubah kualitatif, supaya lebih mudah dalam analisisnya maka akan dibentuk dua data berbeda.
+
+```{r}
+dt <- select(data, -Negara)
+```
+
+# Eksplorasi Data
+
+## Peubah Respon
+
+```{r}
+hist(dt$Y, main = "Sebaran Emisi CO2 per Kapita")
+```
+
+```{r}
+boxplot(dt$Y, main = "Sebaran Emisi CO2 per Kapita")
+```
+
+## Peubah Pennjelas vs Peubah Respon
+
+### GDP per Kapita 
+
+```{r}
+plot(dt$X1, dt$Y)
+```
+
+Hubungan antara peubah $Y$ dan $X1$ cenderung tidak linear, ada beberapa amatan dengan nilai $X$ jauh dari amatan lainnya.
+
+### Rata-Rata Konsumsi Jumlah Energi per Kapita
+
+```{r}
+plot(dt$X2, dt$PPM)
+```
+
+Hubungan antara peubah $Y$ dan $X2$ cenderung tidak linear, ada banyak amatan dengan nilai $X$ jauh dari amatan lainnya.
+
+### Jumlah Penduduk Daerah Perkotaan
+
+```{r}
+plot(dt$X3, dt$Y)
+```
+
+Hubungan antara peubah $Y$ dan $X3$ cenderung tidak linear, ada banyak amatan dengan nilai $X$ jauh dari amatan lainnya.
+
+### Kepadatan Penduduk
+
+```{r}
+plot(dt$X4, dt$Y)
+```
+
+Hubungan antara peubah $Y$ dan $X4$ tidak linear, ada banyak amatan dengan nilai $X$ jauh dari amatan lainnya.
+
+### Penggunaan Energi Alternatif
+
+```{r}
+plot(dt$X5, dt$Y)
+```
+
+Hubungan antara peubah $Y$ dan $X5$ cenderung tidak linear, ada beberapa amatan dengan nilai X jauh dari amatan lainnya. 
+
+## Korelasi
+
+```{r}
+ggpairs(dt,
+        upper = list(continuous = wrap('cor', size = 3)),
+        title = "Matriks Scatterplot Data")
+```
+
+```{r}
+cor_matrix <- cor(dt, use = "complete.obs")
+
+corrplot(cor_matrix, method = "color", type = "lower",
+         col = colorRampPalette(c("red", "white", "blue"))(200),
+         addCoef.col = "black", tl.col = "black", tl.srt = 35)
+```
+
+
+Hasil matriks scatter plot dan korelasi menunjukkan bahwa peubah respon Emisi $CO_2$ per kapita ($Y$) memiliki hubungan positif dengan GDP per Kapita ($X1$), Rata-Rata Konsumsi Jumlah Energi per Kapita ($X2$), dan Jumlah Penduduk Daerah Perkotaan ($X3$). Sementara itu, peubah respon ($Y$) memiliki hubungan negatif dengan Kepadatan Penduduk ($X4$) dan Penggunaan Energi Alternatif ($X5$).
+
+Selain itu, terdapat banyak korelasi tinggi antar peubah penjelas, baik lebih dari 0.5 maupun kurang dari -0.5. Beberapa di antaranya adalah:
+1. GDP per Kapita ($X1$) dan Rata-Rata Konsumsi Jumlah Energi per Kapita ($X2$) memiliki korelasi positif sebesar 0.67.
+2. GDP per Kapita ($X1$) dan Jumlah Penduduk Daerah Perkotaan ($X3$) memiliki korelasi positif sebesar 0.54.
+3. Jumlah Penduduk Daerah Perkotaan ($X_3$) dan Penggunaan Energi Alternatif ($X_5$) menunjukkan korelasi negatif yang cukup kuat, yaitu sebesar -0.55.
+
+Korelasi yang tinggi ini mengindikasikan adanya potensi multikolinearitas, yang dapat mempengaruhi keakuratan model yang akan dibentuk.
+
+# Pemodelan
+
+```{r}
+model1 = lm(formula = Y ~ ., data = dt)
+summary(model1)
+```
+
+
+Persamaan yang terbentuk adalah
+$$\hat{Y}= 3.218 −0.000002028 X1 + 0.002011 X2 -2.131 X3 −0.0001785 X4 −4.8067 X5$$
+
+Pada ringkasan model ini dapat dilihat bahwa secara simultan minimal ada satu peubah penjelas yang berpengaruh signifikan terhadap Emisi $CO_2$.Hal tersebut ditunjukkan oleh nilai uji F yang signifikan p-value < 0,05, sehingga model secara keseluruhan signifikan.Secara parsial, terdapat dua peubah yang signifikan pada taraf nyata 5%, yaitu $X2$ dan $X5$. Sementara itu $X1$, $X3$, dan $X4$ tidak signifikan.
+
+Selain itu, tidak terdapat indikasi perubahan tanda yang mengarah pada masalah multikolinearitas yang serius, meskipun beberapa koefisien tidak signifikan. Oleh karena itu, selanjutnya diperlukan pengujian asumsi pada model, dimulai dengan pemeriksaan multikolinearitas, dilanjutkan dengan diagnosis sisaan untuk memastikan validitas model yang digunakan.
+
+# Pemeriksaan Multikolinearitas
+
+## Perubahan Peubah
+
+```{r}
+mod1 <- lm(Y ~ ., dt[1:2])
+mod2 <- lm(Y ~ ., dt[1:3])
+mod3 <- lm(Y ~ ., dt[1:4])
+mod4 <- lm(Y ~ ., dt[1:5])
+mod5 <- lm(Y ~ ., dt)
+
+stargazer(mod1, mod2, mod3, mod4, mod5,
+          type = "text", single.row = TRUE)
+
+```
+
+Terdapat perubahan tanda arah korelasi pada peubah $X1$ dan $X3$, perubahan dugaan parameter juga cukup besar ketika ditambahkan peubah lainnya. Hasil ini mengindikasikan adanya permasalahan dalam model.
+
+## Perubahan Banyak Data
+
+```{r}
+mod5_1 <- lm(Y ~ ., dt[1:15,])
+stargazer(summary(mod5)$coefficients, summary(mod5_1)$coefficients,
+          type = "text",
+          font.size = "small")
+```
+
+Terdapat dugaan parameter yang mengalami perubahan besar ketika jumlah amatan berbeda, mengindikasikan model bermasalah dan tidak stabil.
+
+## Akar Ciri
+
+```{r}
+x <- dt[-1]
+r <- cor(x)
+(ev <- eigen(r)$values)
+```
+
+```{r}
+# Simultan
+if ((max(ev) / min(ev)) <= 100) {
+  cat("Tidak ada multikolinearitas\n")
+} else if ((max(ev) / min(ev)) > 100 & (max(ev) / min(ev)) <= 1000) {
+  cat("Ada multikolinearitas yang lemah\n")
+} else {
+  cat("Ada multikolinearitas yang kuat\n")
+}
+```
+
+```{r}
+# Parsial
+if (all((max(ev) / ev) <= 1000)) {
+  cat("Tidak ada multikolinearitas\n")
+} else {
+  cat("Ada multikolinearitas pada peubah penjelas ke:", which((max(ev) / ev) > 1000), "\n")
+}
+```
+
+## Nilai VIF
+
+```{r}
+vif(model1)
+```
+
+Hasil pemeriksaan dengan akar ciri menyatakan tidak ada multikolinearitas pada model karena tidak ada nilai $k>100$ secara simultan. Nilai VIF juga menunjukkan tidak ada peubah yang VIF nya lebih dari 10. Namun masih ada peubah yang mengalami perubahan tanda arah korelasi. Artinya ada permasalahan lain yang mungkin belum tertangani, perlu dilakuan uji asumsi dan pemeriksaan pencilan, leverage, dan amatan berpengaruh.
+
+# Pengujian Asumsi
+
+## Eksplorasi Grafik
+
+### Plot Sisaan vs Y duga
+
+```{r}
+plot(model1,1) 
+```
+
+1. Sisaan di sekitar 0 → Nilai harapan sisaan sama dengan nol. 
+2. Lebar pita tidak sama untuk setiap nilai dugaan → Ragam sisaan tidak homogen.
+3. Pola plot cenderung berbentuk corong → Ragam sisaan tidak homogen.
+
+### Plot Sisaan vs Urutan
+
+```{r}
+plot(x = 1:dim(dt)[1],
+     y = model1$residuals,
+     type = 'b', 
+     ylab = "Residuals",
+     xlab = "Observation")
+```
+
+Tebaran titik-titik sisaan menyebar secara acak dan tidak membentuk pola geometris tertentu → sisaan saling bebas. Namun, fluktuasi yang cukup tajam dan bolak-balik antara nilai positif dan negatif yang ekstrem pada beberapa amatan awal (seperti amatan 2 dan 14) secara visual memberikan sedikit indikasi adanya autokorelasi negatif, meskipun secara umum sebagian besar sisaan lainnya bergerak acak di sekitar sumbu nol.
+
+### QQ plot
+
+```{r}
+plot(model1,2)
+```
+
+sebagian besar amatan berada sangat dekat dan mengikuti garis diagonal referensi. Namun, pada kedua ujung grafik, terdapat amatan yang cenderung menjauh dan tidak mengikuti garis pola, khususnya amatan nomor 14 di ujung kiri bawah serta amatan nomor 2 dan 23 di ujung kanan atas. Hal ini mengindikasikan adanya pencilan (outliers) yang berpotensi menyebabkan sisaan tidak menyebar normal sepenuhnya.
+
+## Uji Formal
+
+### Nilai harapan sisaan sama dengan nol
+
+```{r}
+t.test(model1$residuals,mu = 0,conf.level = 0.95)
+```
+
+Nilai p pada uji t sama dengan 1 yang lebih besar dari alpha 5%, sehingga dinyatakan asumsi nilai harapan sisaan sama dengan nol terpenuhi.
+
+### Ragam sisaan homogen
+
+```{r}
+bptest(model1)
+```
+
+Nilai p pada uji breusch pagan sama dengan 0.1312 yang lebih dari alpha 5%, sehingga dinyatakan asumsi ragam sisaan homogen tidak terpenuhi.
+
+### Sisaan saling bebas
+
+```{r}
+dwtest(model1)
+```
+
+Nilai p pada uji durbin watson sama dengan 0.7728 yang lebih besar dari alpha 5%, sehingga dinyatakan asumsi sisaan saling bebas terpenuhi.
+
+### Normalitas Sisaan
+
+```{r}
+shapiro.test(model1$residuals)
+```
+
+Nilai p pada uji shapiro wilk sama dengan 0.1743 yang lebih besar dari alpha 5%, sehingga dinyatakan asumsi normalitas sisaan terpenuhi.
+
+Semua asumsi sisaan terpenuhi, tetapi model masih buruk, kemungkinan karena keberadaan amatan yang tidak biasa seperti pencilan, leverage, atau amatan berpengaruh.
+
+# Pemeriksaan Amatan Tidak Biasa
+
+```{r}
+#fungsi
+ri_stud <- rstudent(model1)
+ri_stan <- rstandard(model1)
+hii_fungsi <- hatvalues(model1)
+
+#manual
+X <- model.matrix(model1)
+X_inv_xt <- X %*% solve(t(X) %*% X) %*% t(X)
+hii_manual <- diag(X_inv_xt)
+anova_model <- anova(model1)
+s <- sqrt(anova_model["Residuals", "Mean Sq"])
+ei <- model1$residuals
+ri_manual <- ei/(s*sqrt(1-hii_manual))
+
+nilai <- data.frame(ri_stud, ri_stan, ri_manual, hii_fungsi, hii_manual)
+nilai
+```
+
+## Pencilan
+
+```{r}
+for (i in 1:dim(nilai)[1]){
+  absri <- abs(nilai[,2])
+  pencilan <- which(absri > 2)
+}
+pencilan
+```
+
+Amatan ke-2 dan ke-14 terdeteksi sebagai pencilan.
+
+## Leverage
+
+```{r}
+n <- dim(dt)[1]
+p <- length(model1$coefficients)
+
+for (i in 1:dim(nilai)[1]){
+  cutoff <- 2*p/n
+  titik_leverage <- which(hii_fungsi > cutoff)
+}
+titik_leverage
+```
+
+Amatan ke-5 dan ke-25 terdeteksi sebagai titik leverage.
+
+```{r}
+ols_plot_resid_lev(model1)
+```
+
+Plot yang terbentuk dari fungsi `ols_plot_resid_lev()` menyatakan bahwa amatan ke-2 dan ke-14 teridentifikasi secara jelas sebagai pencilan (outlier) karena nilai studentized residual (RStudent) keduanya berada di luar batas ambang batas $\pm 2$. Sementara itu, amatan ke-5 dan ke-25 teridentifikasi memiliki titik ungkit (leverage) yang tinggi karena nilai leverage-nya melebihi batas ambang batas 0.4.
+
+## Amatan Berpengaruh
+
+### Jarak Cook
+
+```{r}
+di <- cooks.distance(model1)
+f <- qf(0.05,p,n-p, lower.tail = F)
+data.frame(di, di>f)
+```
+
+```{r}
+cooks_crit = f
+model_cooks <- cooks.distance(model1)
+df <- data.frame(obs = names(model_cooks),
+                 cooks = model_cooks)
+ggplot(df, aes(y = cooks, x = obs)) +
+  geom_point() +
+  geom_hline(yintercept = cooks_crit, linetype="dashed") +
+  labs(title = "Cook's Distance",
+       subtitle = "Influential Observation ",
+       x = "Observation Number",
+       y = "Cook's")
+```
+
+Pemeriksaan amatan berpengaruh dengan jarak cook tidak dihasilkan nilai yang melebihi ambang batas.
+
+### DFBETAS
+
+```{r}
+ols_plot_dfbetas(model1)
+```
+
+Hasil DFBETAS akan menunjukkan pengaruh observasi terhadap setiap koefisien regresi, sehingga ada output untuk setiap parameter regresi. DFBETAS mengukur seberapa besar koefisien regresi berubah jika suatu observasi dihapus dari model.
+
+### DFFITS
+
+```{r}
+ols_plot_dffits(model1)
+```
+
+Hasil DFFITS menunjukkan pengaruh observasi terhadap nilai prediksi $Y$, sehingga hanya menghasilkan satu output. DFFITS mengukur seberapa besar nilai prediksi $\hat{Y}_i$ berubah jika suatu observasi dihapus dari model, sehingga lebih tepat digunakan jika ingin melihat pengaruh observasi terhadap hasil model secara keseluruhan.
+
+```{r}
+DFFITSi <- dffits(model1)
+
+amatan_berpengaruh <- vector("list", dim(nilai)[1])
+for (i in 1:dim(nilai)[1]) {
+  cutoff <- 2 * sqrt((p / n))
+  amatan_berpengaruh[[i]] <- which(abs(DFFITSi) > cutoff)
+}
+berpengaruh <- unlist(amatan_berpengaruh)
+amatan_berpengaruh <- sort(unique(berpengaruh))
+amatan_berpengaruh
+```
+
+Amatan ke-2, ke-5 dan ke-14 termasuk amatan berpengaruh sehingga sangat riskan jika disisihkan. Perlu ditelusuri lebih lanjut
+
+# Pemodelan Penyisihan Amatan
+
+```{r}
+# gunakan peubah penjelas yang sudah diseleksi
+
+dt1 <- dt %>% slice(-2)
+model2 <- lm(Y ~ X1 + X2 + X3 + X4 + X5, dt1)
+
+dt2 <- dt %>% slice(-5)
+model3 <- lm(Y ~ X1 + X2 + X3 + X4 + X5, dt2)
+
+dt3 <- dt %>% slice(-14)
+model4 <- lm(Y ~ X1 + X2 + X3 + X4 + X5, dt3)
+
+dt4 <- dt %>% slice(-c(2, 5))
+model5 <- lm(Y ~ X1 + X2 + X3 + X4 + X5, dt4)
+
+dt5 <- dt %>% slice(-c(2, 14))
+model6 <- lm(Y ~ X1 + X2 + X3 + X4 + X5, dt5)
+
+dt6 <- dt %>% slice(-c(5, 14))
+model7 <- lm(Y ~ X1 + X2 + X3 + X4 + X5, dt6)
+
+dt7 <- dt %>% slice(-c(2, 5, 14))
+model8 <- lm(Y ~ X1 + X2 + X3 + X4 + X5, dt7)
+```
+
+```{r}
+get_metrics <- function(model) {
+  adj_r2 <- summary(model)$adj.r.squared
+  sse <- sum(model$residuals^2)
+  return(c(adj_r2, sse))
+}
+
+model_metrics <- data.frame(
+  Model = c("Model 1", "Model 2", "Model 3", "Model 4", "Model 5",
+            "Model 6", "Model 7", "Model 8" ),
+  Adjusted_R2 = sapply(list(model1, model2, model3, model4, 
+                            model5, model6, model7, model8), 
+                       function(m) get_metrics(m)[1]),
+  SSE = sapply(list(model1, model2, model3, model4, 
+                    model5, model6, model7, model8), 
+               function(m) get_metrics(m)[2])
+)
+
+print(model_metrics)
+```
+
+Berdasarkan hasil perbandingan tersebut, didapatkan bahwa Model 7 yang memiliki nilai adjusted R square terbesar, yaitu sebesar 0.9482118 dan SSE terkecil yang menyisihkan amatan ke-5 dan ke-14.
+
+```{r}
+stargazer(model1, model3, model8, type = "text", font.size = "small", report = "vc*p")
+```
+

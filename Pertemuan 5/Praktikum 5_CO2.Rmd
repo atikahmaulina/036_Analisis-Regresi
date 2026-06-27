@@ -1,0 +1,230 @@
+---
+title: "Praktikum 5 Anreg"
+author: "Atikah Maulina"
+date: "`r Sys.Date()`"
+output: 
+  rmdformats::readthedown
+---
+
+# Library
+
+```{r}
+library(readxl) # untuk membaca data
+library(GGally) # untuk menghasilkan matriks hubungan antarpeubah
+library(corrplot) # untuk menghasilkan matriks korelasi
+library(dplyr) # untuk manipulasi data
+library(car) # untuk memeriksa multikolinearitas
+```
+
+# Data
+
+```{r}
+data <- read_excel("C:/Users/ATIKAH MAULINA/OneDrive/Documents/STK 4/ANREG/Anreg_UAS/ANREG DATA CO2.xlsx")
+
+head(data) # menampilkan sekian data awal
+str(data) # menampilkan tipe data setiap peubah
+summary(data) # menampilkan ringkasan data
+```
+
+Data yang digunakan adalah data dari 30 Negara di dunia pada Tahun 2020 dengan 1 peubah respon yaitu CO2 per Kapita dan 4 peubah penjelas. Peubah tersebut adalah Emisi $CO₂$ per kapita ($Y$), GDP per Kapita ($X1$), Rata-Rata Konsumsi Jumlah Energi per Kapita ($X2$),	Jumlah Penduduk Daerah Perkotaan dalam persen ($X3$),	Kepadatan Penduduk ($X4$), dan Penggunaan Energi Alternatif dalam persen ($X5$).
+
+Untuk mempermudah dalam komputasi, karena peubah Negara tidak digunakan, maka dapat dihapus. Pada praktikum kali ini akan dilakukan dua pemodelan, yakni model dengan seluruh peubah kuantitatif dan model dengan adanya peubah kualitatif, supaya lebih mudah dalam analisisnya maka akan dibentuk dua data berbeda.
+
+```{r}
+dt <- select(data, -Negara)
+```
+
+# Eksplorasi data
+
+```{r}
+hist(data$Y, main = "Sebaran Emisi CO2 per Kapita")
+```
+
+```{r}
+boxplot(data$Y, main = "Sebaran Emisi CO2 per Kapita")
+```
+
+```{r}
+ggpairs(dt,
+        upper = list(continuous = wrap('cor', size = 3)),
+        title = "Matriks Scatterplot Data")
+
+```
+
+```{r}
+cor_matrix <- cor(dt, use = "complete.obs")
+
+corrplot(cor_matrix, method = "color", type = "lower",
+         col = colorRampPalette(c("red", "white", "blue"))(200),
+         addCoef.col = "black", tl.col = "black", tl.srt = 35)
+```
+
+Hasil matriks scatter plot dan korelasi menunjukkan bahwa peubah respon Emisi $CO_2$ per kapita ($Y$) memiliki hubungan positif dengan GDP per Kapita ($X1$), Rata-Rata Konsumsi Jumlah Energi per Kapita ($X2$), dan Jumlah Penduduk Daerah Perkotaan ($X3$). Sementara itu, peubah respon ($Y$) memiliki hubungan negatif dengan Kepadatan Penduduk ($X4$) dan Penggunaan Energi Alternatif ($X5$).
+
+Selain itu, terdapat banyak korelasi tinggi antar peubah penjelas, baik lebih dari 0.5 maupun kurang dari -0.5. Beberapa di antaranya adalah:
+1. GDP per Kapita ($X1$) dan Rata-Rata Konsumsi Jumlah Energi per Kapita ($X2$) memiliki korelasi positif sebesar 0.67.
+2. GDP per Kapita ($X1$) dan Jumlah Penduduk Daerah Perkotaan ($X3$) memiliki korelasi positif sebesar 0.54.
+3. Jumlah Penduduk Daerah Perkotaan ($X_3$) dan Penggunaan Energi Alternatif ($X_5$) menunjukkan korelasi negatif yang cukup kuat, yaitu sebesar -0.55.
+
+Korelasi yang tinggi ini mengindikasikan adanya potensi multikolinearitas, yang dapat mempengaruhi keakuratan model yang akan dibentuk.
+
+# Pemodelan
+
+## Tanpa Fungsi
+
+Perhitungan nilai $\hat{\beta}$ secara matriks dapat dilakukan dengan rumus berikut.
+
+$$\hat{\beta} = (X'X)^{-1} X'y$$
+
+```{r}
+# pembentukan matriks
+n <- nrow(dt)
+x0 <- rep(1,n)
+x <- data.frame(x0, dt$X1, dt$X2, dt$X3,
+                dt$X4, dt$X5)
+x <- as.matrix(x)
+y <- dt$Y
+```
+
+```{r}
+beta_duga <- solve(t(x)%*%x)%*%t(x)%*%y
+beta_duga
+```
+
+Hasil tersebut menjelaskan bahwa persamaan yang terbentuk adalah
+$$\hat{PPM}= 3.218290 −0.000002028 X1 + 0.0020108 X2 -2.130811 X3 −0.0001785 X4 −4.806704 X5$$
+Selang kepercayaan dan pengujian signifikansi setiap parameter dapat dilakukan dengan menghitung keragaman tiap dugaan parameter. Secara umum, nilai ragam dugaan parameter $\hat{\beta}_j$ dapat dihitung melalui rumus berikut.
+
+$$Var(\hat{\beta}_j) = \hat{\sigma}^2 C_{jj}$$
+Dengan matriks $C$ adalah matriks $(X'X)^{-1}$ 
+
+```{r}
+c <- data.frame(solve(t(x)%*%x))
+```
+
+Unsur diagonal dari matriks $C$ dapat digunakan untuk menghitung nilai galat baku dari setiap dugaan parameter. Galat baku ini dapat digunakan untuk menghitung selang kepercayaan dari dugaan yang dihasilkan.
+
+$$SE(\hat{\beta}_j) = \sqrt{Var(\hat{\beta}_j)} = \sqrt{\sigma^2 C_{jj}} = \hat{\sigma}\sqrt{c_{ii}}$$
+
+Misal ingin dihitung selang kepercayaan dari dugaan parameter $\beta_2$, maka
+
+```{r}
+y_hat <- x %*% beta_duga
+residuals <- y - y_hat
+n <- nrow(x)
+p <- ncol(x)
+KTG <- sum(residuals^2) / (n - p) 
+
+c22 <- c[2,2]
+
+(se.b2 <- sqrt(KTG*c22))
+```
+
+```{r}
+alfa <- 0.05
+
+#Batas Bawah beta2
+(bb.b2 <- beta_duga[3,1] - abs(qt(alfa/2, df=n-p))*se.b2)
+```
+
+```{r}
+#Batas Atas beta2
+(ba.b2 <- beta_duga[3,1] + abs(qt(alfa/2, df=n-p))*se.b2)
+```
+
+Dengan demikian, kita dapat ketahui selang kepercayaan untuk $\hat{\beta}_2$ sebagai berikut.
+$$0.001960617<\hat{\beta}_2<0.002060903$$
+
+Pada kasus selang kepercayaan $\hat{\beta}_2$ di atas, didapati bahwa dugaan parameter berada dalam rentang yang mengandung nilai 0. Dengan demikian, dapat dimaknai bahwa diduga nilai parameter $\hat{\beta}_2$ berbeda dari nol atau signifikan secara statistik pada taraf nyata 5%.
+
+# Dengan Fungsi
+
+```{r}
+model1 <- lm(formula = Y ~ ., data = dt)
+summary(model1)
+```
+
+Dugaan parameter model secara matriks dan fungsi menghasilkan angka yang sama, sehingga perhitungan matriks dapat dikatakan sudah tepat. Pada ringkasan model ini dapat dilihat bahwa beberapa parameter yang signifikan pada taraf nyata 5%, yaitu variabel $X2$ (p-value = 3.25e-10) dan $X5$ (p-value = 0.0106). Sementara itu, variabel $X1$, $X3$, dan $X4$ tidak signifikan karena memiliki nilai p-value > 0.05. Namun secara simultan model ini signifikan dengan nilai p-value sebesar 4.513e-12, yang lebih kecil dari $α$ = 0.05. Hal ini mengindikasi model yang buruk, kemungkinan terjadi pelanggaran asumsi sisaan maupun multikolinearitas.
+
+# Pemeriksaan Multikoliniearitas
+
+```{r}
+vif(model1)
+```
+
+Hasil uji ini menunjukkan bahwa seluruh peubah memiliki nilai VIF yang masih berada di bawah 10, sehingga tidak terdapat indikasi multikolinearitas yang serius pada model ini. Dengan demikian, tidak diperlukan penghapusan peubah dalam analisis karena seluruh variabel masih memenuhi asumsi bebas multikolinearitas.Namun seluruh parameter masih tidak signifikan, padahal secara simultan model ini sudah signifikan. Artinya ada permasalahan lain yang mungkin belum tertangani, perlu dilakuan uji asumsi dan pemeriksaan pencilan, leverage, dan amatan berpengaruh.
+
+# Uji Hipotesis Kesamaan Parameter Regresi
+
+Misal ingin dilakukan pemodelan dengan peubah respon Persentase Penduduk Miskin dengan 4 peubah penjelas, yaitu $X2$, $X3$, $X4$, $X5$.
+
+```{r}
+model4 <- lm(Y ~ X2 + X3 + X4 + X5, data = dt)
+summary(model4)
+```
+
+```{r}
+vif(model4)
+```
+
+Regresi yang dihasilkan tidak mengalami masalah multikolinearitas. Hasil tersebut menunjukkan bahwa peubah $X2$ dan $X5$ signifikan pada taraf nyata 5%, sedangkan $X3$ dan $X4$ tidak signifikan. Berikut adalah persamaan yang terbentuk
+
+$$\hat{Y}= 3.2922110 + 0.0020002 X2 −2.2264553 X3 −0.0002123 X4 −4.8701763 X5$$
+
+Hasil pemodelan tersebut dapat dilakukan serangkaian uji untuk memeriksa apakah $β_3$dan $β_4$ dapat diasumsikan sama ketika parameter lainnya tidak signifikan atau diasumsikan sama dengan nol.
+
+Hipotesis yang diuji adalah
+
+$$H_0: β3=β4$$
+$$H_1: β3≠β4$$
+
+Karena peubah $X3$ dan $X4$ tidak signifikan maka dapat diasumsikan nol sehingga model dapat disederhanakan menjadi:
+
+$$Y=β_0 + β_3 X3 + β_4 X4 +ε$$
+Jika $H_0$ benar $(β_3=β_4=β_1')$, model bisa ditulis ulang sebagai
+
+$$Y= β_0 + β_1' (X2+X5) + ε$$
+
+```{r}
+# Buat peubah baru
+dt$X_new <- dt$X2 + dt$X5
+
+# Model penuh (Full Model)
+model_full <- lm(Y ~ X2 + X5, data = dt)
+
+# Model terbatas (Restricted Model)
+model_restricted <- lm(Y ~ X_new, data = dt)
+
+# Bandingkan dengan Uji F
+anova(model_restricted, model_full)
+```
+
+Hasil perbandingan menunjukkan bahwa p-value kurang dari $α$ = 0.05, sehingga dapat disimpulkan bahwa tolak $H_0$, artinya peubah $X2$ dan $X5$ berbeda secara signifikan sehingga tidak dapat digabung. Selanjutnya dapat dipilih apakah akan menggunakan peubah dengan 4 peubah atau hanya 2 peubah berdasarkan indikator Adjusted R-Squared, AIC, dan BIC.
+
+```{r}
+model_all <- lm(Y ~ X2 + X3 + X4 + X5, data = dt)
+summary(model_all)
+```
+
+```{r}
+model_signif <- lm(Y ~ X2 + X5, data = dt)
+summary(model_signif)
+```
+
+```{r}
+perbandingan <- data.frame(
+  Model = c("Peubah Penuh", "Peubah Signifikan"),
+  Adjusted_R2 = as.numeric(c(summary(model_all)$adj.r.squared, summary(model_signif)$adj.r.squared)),
+  AIC = as.numeric(c(AIC(model_all), AIC(model_signif))),
+  BIC = as.numeric(c(BIC(model_all), BIC(model_signif)))
+)
+perbandingan
+```
+
+Berdasarkan indikator Adjusted R square, AIC, dan BIC maka model dengan hanya dua peubah ($X2$ dan $X5$) dipilih sebagai model yang terbaik. Persamaan yang terbentuk adalah sebagai berikut
+
+$$\hat{Y}= 1.6833 + 0.0019427 X2 −3.9872 X5$$
+Interpretasi:
+1.Dugaan nilai rata-rata $Y$ ketika $X2$ dan $X5$ bernilai 0 adalah 1.6833.
+2.Dugaan nilai $Y$ akan meningkat sebesar 0.0019427 apabila $X2$ naik satu satuan dengan asumsi $X5$ konstan.
+3.Dugaan nilai $Y$ akan menurun sebesar 3.9872 apabila $X5$ naik satu satuan dengan asumsi $X2$ konstan.
